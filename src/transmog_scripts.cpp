@@ -1104,6 +1104,33 @@ public:
         sT->DeleteFakeFromDB(it->GetGUID().GetCounter());
     }
 
+    const std::unordered_map<uint32, bool> validInventoryTypes = 
+    {
+        {1, true},   // Head
+        {3, true},   // Shoulder
+        {4, true},   // Shirt
+        {5, true},   // Chest
+        {6, true},   // Belt
+        {7, true},   // Legs
+        {8, true},   // Boots
+        {9, true},   // Bracers
+        {10, true},  // Gloves
+        {13, true},  // One-hand weapons
+        {14, true},  // Shield / Off-hand
+        {15, true},  // Bow
+        {16, true},  // Cloak
+        {17, true},  // Two-hand weapons (staff, etc.)
+        {19, true},  // Tabard
+        {20, true},  // Chest (again)
+        {21, true},  // Main hand (1h)
+        {22, true},  // Off-hand (1h)
+        {23, true},  // Off-hand (books)
+        {25, true},  // Thrown
+        {26, true}   // Wand
+
+        // 2 = neck, 11 = rings, 12 = trinket, 18 = bags, 28 = relics
+    };
+
     void OnLogin(Player* player) override
     {
         if (sT->EnableResetRetroActiveAppearances())
@@ -1116,6 +1143,73 @@ public:
         }
         ObjectGuid playerGUID = player->GetGUID();
         sT->entryMap.erase(playerGUID);
+
+
+        if (sT->GetUseCollectionSystem())
+        {
+            // Unlocks transmogs OnLogin (with flag 1 or 0 = itens Soulbound [na teoria].
+            // Flag 4097 = Refund - items que tao em item_refund_instance nao entram em item_instance ?) - item_refund_instance
+            // Flag 257  = Tradeable(raid soulbound) - quando da trade em um item, o owner_guid (novo dono), fica com id diferente do giftCreatorGuid (antigo dono) - item_soulbound_data
+            // IsSoulbound? testar se pega o transmog depois de 2h de refund/tradeable on login
+
+            uint32 collectedAppearanceCount = 0;
+            uint32 playerGUIDLow = player->GetGUID().GetCounter();
+            uint32 accountID = player->GetSession()->GetAccountId();
+
+            QueryResult itemInstanceQuery = CharacterDatabase.Query("SELECT itemEntry FROM item_instance WHERE owner_guid = {} AND (flags = 1 OR flags = 0)", playerGUIDLow);
+            if (itemInstanceQuery)
+            {
+                std::unordered_set<uint32> addedItems;
+                do
+                {
+                    uint32 itemEntry = itemInstanceQuery->Fetch()[0].Get<uint32>();
+                    QueryResult itemTemplateQuery = WorldDatabase.Query("SELECT name, inventoryType, Quality FROM item_template WHERE entry = {}", itemEntry);
+                    if (itemTemplateQuery)
+                    {
+                        std::string itemName = itemTemplateQuery->Fetch()[0].Get<std::string>();
+                        uint32 inventoryType = itemTemplateQuery->Fetch()[1].Get<uint32>();
+                        uint32 itemQuality = itemTemplateQuery->Fetch()[2].Get<uint32>();
+                        if (validInventoryTypes.find(inventoryType) != validInventoryTypes.end() && addedItems.find(itemEntry) == addedItems.end())
+                        {
+                            QueryResult checkQuery = CharacterDatabase.Query("SELECT COUNT(*) FROM custom_unlocked_appearances WHERE account_id = {} AND item_template_id = {}", accountID, itemEntry);
+                            //QueryResult checkQuery = CharacterDatabase.Query("SELECT COUNT(*) FROM custom_unlocked_appearances WHERE account_id = {} AND item_template_id = {}", playerGUIDLow, itemEntry);
+
+                            if (checkQuery && checkQuery->Fetch()[0].Get<uint32>() == 0)
+                            {
+                                CharacterDatabase.Execute("INSERT INTO custom_unlocked_appearances (account_id, item_template_id) VALUES ({}, {})", accountID, itemEntry);
+                                //CharacterDatabase.Execute("INSERT INTO custom_unlocked_appearances (account_id, item_template_id) VALUES ({}, {})", playerGUIDLow, itemEntry);
+
+                                addedItems.insert(itemEntry);
+
+                                collectedAppearanceCount++;
+                                if (sT->AddCollectedAppearance(accountID, itemEntry))
+                                //if (sT->AddCollectedAppearance(playerGUIDLow, itemEntry))
+                                {
+                                    //LOG_INFO("module", "Item {} inserido no cache de transmogs coletados para a conta {} (Player GUID: {})", itemEntry, accountID, playerGUIDLow);
+                                }
+
+                                std::string itemQualityColor;
+                                switch (itemQuality)
+                                {
+                                    case 0: itemQualityColor = "ff9d9d9d"; break;  // Poor (cinza)
+                                    case 1: itemQualityColor = "ffffffff"; break;  // Common (branco)
+                                    case 2: itemQualityColor = "ff1eff00"; break;  // Uncommon (verde)
+                                    case 3: itemQualityColor = "ff0070dd"; break;  // Rare (azul)
+                                    case 4: itemQualityColor = "ffa335ee"; break;  // Epic (roxo)
+                                    case 5: itemQualityColor = "ffff8000"; break;  // Legendary (laranja)
+                                    case 6: itemQualityColor = "ffe6cc80"; break;  // Artifact (amarelo)
+                                    case 7: itemQualityColor = "ffe6cc80"; break;  // Heirloom (rosa)
+                                    default: itemQualityColor = "ffe6cc80"; break; // Cor padrão para qualquer outro itemQuality
+                                }
+                                std::string message = fmt::format("|c{}|Hitem:{}:0:0:0:0:0:0:0:0|h[{}]|h|r has been added to your appearance collection.", itemQualityColor, itemEntry, itemName);
+                                ChatHandler(player->GetSession()).PSendSysMessage(message.c_str());
+                            }
+                        }
+                    }
+                } while (itemInstanceQuery->NextRow());
+            }
+        }
+
         QueryResult result = CharacterDatabase.Query("SELECT GUID, FakeEntry FROM custom_transmogrification WHERE Owner = {}", player->GetGUID().GetCounter());
         if (result)
         {

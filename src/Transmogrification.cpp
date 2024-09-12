@@ -1052,6 +1052,7 @@ bool Transmogrification::CanNeverTransmog(ItemTemplate const* itemTemplate)
 {
     return (itemTemplate->InventoryType == INVTYPE_BAG ||
         itemTemplate->InventoryType == INVTYPE_RELIC ||
+        itemTemplate->InventoryType == INVTYPE_NECK ||
         itemTemplate->InventoryType == INVTYPE_FINGER ||
         itemTemplate->InventoryType == INVTYPE_TRINKET ||
         itemTemplate->InventoryType == INVTYPE_AMMO ||
