@@ -178,17 +178,21 @@ public:
 
         bool CanBeSeen(Player const* player) override
         {
-            Player* target = ObjectAccessor::FindConnectedPlayer(player->GetGUID());
+            //LOG_INFO("transmog", "CanBeSeen Entry={} GUID={}", me->GetEntry(), me->GetGUID().ToString());
 
-            if (sT->IsPortableNPCEnabled)
-            {
-                if (TempSummon* summon = me->ToTempSummon())
-                {
-                    return summon->GetOwner() == player;
-                }
-            }
+            //Player* target = ObjectAccessor::FindConnectedPlayer(player->GetGUID());
 
-            return sTransmogrification->IsEnabled() && (target && !target->GetPlayerSetting("mod-transmog", SETTING_HIDE_TRANSMOG).IsEnabled());
+            //if (sT->IsPortableNPCEnabled)
+            //{
+            //    if (TempSummon* summon = me->ToTempSummon())
+            //    {
+            //        return summon->GetOwner() == player;
+            //    }
+            //}
+
+            //return sTransmogrification->IsEnabled() && (target && !target->GetPlayerSetting("mod-transmog", SETTING_HIDE_TRANSMOG).IsEnabled());
+
+            return true;
         }
     };
 
