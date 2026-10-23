@@ -64,11 +64,15 @@ public:
     static bool HandleSyncTransMogCommand(ChatHandler* handler)
     {
         Player* player = handler->GetPlayer();
-        uint32 accountId = player->GetSession()->GetAccountId();
+        uint32 characterGuid = player->GetGUID().GetCounter();
         handler->PSendModuleSysMessage("mod-transmog", LANG_TRANSMOG_CMD_BEGIN_SYNC);
 
-        for (uint32 itemId : sTransmogrification->collectionCache[accountId])
-            handler->PSendSysMessage("TRANSMOG_SYNC:{}", itemId);
+        auto collectionItr = sTransmogrification->collectionCache.find(characterGuid);
+        if (collectionItr != sTransmogrification->collectionCache.end())
+        {
+            for (uint32 itemId : collectionItr->second)
+                handler->PSendSysMessage("TRANSMOG_SYNC:{}", itemId);
+        }
 
         handler->PSendModuleSysMessage("mod-transmog", LANG_TRANSMOG_CMD_COMPLETE_SYNC);
         return true;
@@ -135,7 +139,7 @@ public:
         }
 
         auto guid = player->GetGUID();
-        uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(guid);
+        uint32 characterGuid = guid.GetCounter();
         uint32 itemId = itemTemplate->ItemId;
 
         std::stringstream tempStream;
@@ -153,7 +157,7 @@ public:
         std::string playerName = player->GetName();
         std::string nameLink = handler->playerLink(playerName);
 
-        if (sTransmogrification->AddCollectedAppearance(accountId, itemId))
+        if (sTransmogrification->AddCollectedAppearance(characterGuid, itemId))
         {
             // Notify target of new item in appearance collection
             if (target && !(target->GetPlayerSetting("mod-transmog", SETTING_HIDE_TRANSMOG).value) && !sTransmogrification->CanNeverTransmog(itemTemplate))
@@ -163,7 +167,9 @@ public:
             if (isNotConsole && target != handler->GetPlayer())
                 handler->PSendSysMessage(R"(|c{}|Hitem:{}:0:0:0:0:0:0:0:0|h[{}]|h|r has been added to the appearance collection of Player {}.)", itemQuality.c_str(), itemId, itemName.c_str(), nameLink);
 
-            CharacterDatabase.Execute("INSERT INTO custom_unlocked_appearances (account_id, item_template_id) VALUES ({}, {})", accountId, itemId);
+            CharacterDatabase.Execute(
+                "INSERT INTO custom_unlocked_appearances (character_guid, item_template_id) VALUES ({}, {})",
+                characterGuid, itemId);
         }
         else
         {
@@ -215,7 +221,7 @@ public:
         bool added = false;
         uint32 error = 0; // holds a TransmogStrings id, 0 = no error
         uint32 itemId;
-        uint32 accountId = playerData->AccountId;
+        uint32 characterGuid = guid.GetCounter();
 
         for (uint32 i = 0; i < MAX_ITEM_SET_ITEMS; ++i)
         {
@@ -239,9 +245,12 @@ public:
                         continue;
                     }
 
-                    if (sTransmogrification->AddCollectedAppearance(accountId, itemId))
+                    if (sTransmogrification->AddCollectedAppearance(characterGuid, itemId))
                     {
-                        CharacterDatabase.Execute("INSERT INTO custom_unlocked_appearances (account_id, item_template_id) VALUES ({}, {})", accountId, itemId);
+                        CharacterDatabase.Execute(
+                            "INSERT INTO custom_unlocked_appearances "
+                            "(character_guid, item_template_id) VALUES ({}, {})",
+                            characterGuid, itemId);
                         added = true;
                     }
                 }
@@ -322,8 +331,8 @@ public:
     };
 
     // Binds the item to the player, strips its refundable/BoP-tradeable flags and unlocks its
-    // appearance in the account collection. Sends no feedback of its own; the caller decides what to
-    // report. AddToDatabase shows the per-item "new appearance" message when the appearance is new.
+    // appearance in the character's collection. The caller decides what to report.
+    // AddToDatabase shows the message when the appearance is newly unlocked.
     static ClaimResult TryClaimItem(Player* player, Item* item)
     {
         ItemTemplate const* itemTemplate = item->GetTemplate();
@@ -332,9 +341,10 @@ public:
         if (!sTransmogrification->SuitableForTransmogrification(player, itemTemplate))
             return ClaimResult::Unsuitable;
 
-        uint32 accountId = player->GetSession()->GetAccountId();
-        auto accIt = sTransmogrification->collectionCache.find(accountId);
-        if (accIt != sTransmogrification->collectionCache.end() && accIt->second.contains(itemTemplate->ItemId))
+        uint32 characterGuid = player->GetGUID().GetCounter();
+        auto collectionItr = sTransmogrification->collectionCache.find(characterGuid);
+        if (collectionItr != sTransmogrification->collectionCache.end() &&
+            collectionItr->second.contains(itemTemplate->ItemId))
             return ClaimResult::AlreadyOwned;
 
         // Claim the physical item: bind it to the player and drop the refundable/BoP-tradeable flags
@@ -777,9 +787,10 @@ public:
         }
         else
         {
-            uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(playerGuid);
-            auto const& collCache = sTransmogrification->collectionCache[accountId];
-            bool inCollection = collCache.find(srcItem->ItemId) != collCache.end();
+            uint32 characterGuid = playerGuid.GetCounter();
+            auto collectionItr = sTransmogrification->collectionCache.find(characterGuid);
+            bool inCollection = collectionItr != sTransmogrification->collectionCache.end() &&
+                collectionItr->second.contains(srcItem->ItemId);
             collOk = inCollection;
             collLine += inCollection
                 ? "[+] " + okMsg

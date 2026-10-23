@@ -81,11 +81,12 @@ std::vector<Item*> GetValidTransmogs (Player* player, Item* target, bool hasSear
 
     if (sT->GetUseCollectionSystem())
     {
-        uint32 accountId = player->GetSession()->GetAccountId();
-        if (sT->collectionCache.find(accountId) == sT->collectionCache.end())
+        uint32 characterGuid = player->GetGUID().GetCounter();
+        auto collectionItr = sT->collectionCache.find(characterGuid);
+        if (collectionItr == sT->collectionCache.end())
             return allowedItems;
 
-        for (uint32 itemId : sT->collectionCache[accountId])
+        for (uint32 itemId : collectionItr->second)
         {
             if (!sObjectMgr->GetItemTemplate(itemId))
                 continue;

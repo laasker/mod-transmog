@@ -464,17 +464,9 @@ void Transmogrification::SetFakeEntry(Player* player, uint32 newEntry, uint8 /*s
     UpdateItem(player, itemTransmogrified);
 }
 
-bool Transmogrification::AddCollectedAppearance(uint32 accountId, uint32 itemId)
+bool Transmogrification::AddCollectedAppearance(uint32 characterGuid, uint32 itemId)
 {
-    if (!collectionCache.contains(accountId))
-    {
-        collectionCache.insert({ accountId, {itemId} });
-        return true;
-    }
-
-    auto res = collectionCache[accountId].insert(itemId);
-    bool inserted = res.second;
-    return inserted;
+    return collectionCache[characterGuid].insert(itemId).second;
 }
 
 void Transmogrification::AddToDatabase(Player* player, ItemTemplate const* itemTemplate)
@@ -487,7 +479,7 @@ void Transmogrification::AddToDatabase(Player* player, ItemTemplate const* itemT
         return;
     uint32 itemId = itemTemplate->ItemId;
     WorldSession* session = player->GetSession();
-    uint32 accountId = session->GetAccountId();
+    uint32 characterGuid = player->GetGUID().GetCounter();
     std::string itemName = itemTemplate->Name1;
 
     int locIndex = session->GetSessionDbLocaleIndex();
@@ -498,12 +490,14 @@ void Transmogrification::AddToDatabase(Player* player, ItemTemplate const* itemT
     tempStream << std::hex << ItemQualityColors[itemTemplate->Quality];
     std::string itemQuality = tempStream.str();
     bool showChatMessage = !(player->GetPlayerSetting("mod-transmog", SETTING_HIDE_TRANSMOG).value) && !CanNeverTransmog(itemTemplate);
-    if (AddCollectedAppearance(accountId, itemId))
+    if (AddCollectedAppearance(characterGuid, itemId))
     {
         if (showChatMessage)
             ChatHandler(session).PSendSysMessage(R"(|c{}|Hitem:{}:0:0:0:0:0:0:0:0|h[{}]|h|r {})", itemQuality, itemId, itemName, *session->GetModuleString("mod-transmog", LANG_TRANSMOG_ADDED_APPEARANCE));
 
-        CharacterDatabase.Execute("INSERT INTO custom_unlocked_appearances (account_id, item_template_id) VALUES ({}, {})", accountId, itemId);
+        CharacterDatabase.Execute(
+            "INSERT INTO custom_unlocked_appearances (character_guid, item_template_id) VALUES ({}, {})",
+            characterGuid, itemId);
     }
 }
 
@@ -1282,18 +1276,21 @@ bool Transmogrification::IsPlusFeatureEligible(ObjectGuid const &playerGuid, uin
 
 void Transmogrification::LoadCollections()
 {
+    collectionCache.clear();
+
     if (sTransmogrification->GetUseCollectionSystem())
     {
         LOG_INFO("module", "Loading transmog appearance collection cache....");
         uint32 collectedAppearanceCount = 0;
-        QueryResult result = CharacterDatabase.Query("SELECT account_id, item_template_id FROM custom_unlocked_appearances");
+        QueryResult result = CharacterDatabase.Query(
+            "SELECT character_guid, item_template_id FROM custom_unlocked_appearances");
         if (result)
         {
             do
             {
-                uint32 accountId = (*result)[0].Get<uint32>();
+                uint32 characterGuid = (*result)[0].Get<uint32>();
                 uint32 itemId = (*result)[1].Get<uint32>();
-                if (sTransmogrification->AddCollectedAppearance(accountId, itemId))
+                if (sTransmogrification->AddCollectedAppearance(characterGuid, itemId))
                     collectedAppearanceCount++;
 
             } while (result->NextRow());

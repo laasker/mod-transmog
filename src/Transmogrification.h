@@ -303,8 +303,8 @@ public:
     void UpdateItem(Player* player, Item* item) const;
     void DeleteFakeEntry(Player* player, uint8 slot, Item* itemTransmogrified, CharacterDatabaseTransaction* trans = nullptr);
     void SetFakeEntry(Player* player, uint32 newEntry, uint8 slot, Item* itemTransmogrified);
-    bool AddCollectedAppearance(uint32 accountId, uint32 itemId);
-    // Adds the item's appearance to the player's account collection and, if newly unlocked,
+    bool AddCollectedAppearance(uint32 characterGuid, uint32 itemId);
+    // Adds the item's appearance to the character's collection and, if newly unlocked,
     // notifies the player (LANG_TRANSMOG_ADDED_APPEARANCE). Shared by the auto-collect player
     // script and the `.transmog claim` command.
     void AddToDatabase(Player* player, ItemTemplate const* itemTemplate);
